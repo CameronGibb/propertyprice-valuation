@@ -235,9 +235,15 @@ ggplot(terrace_18_sub, aes(x=log10_price)) +
   geom_vline(xintercept = terrace_18_sum$log10_avg_price, color="blue") +
   geom_vline(xintercept = terrace_18_sum$log10_avg_price - terrace_18_sum$log10_std, linetype="dashed", color="blue") +
   geom_vline(xintercept = terrace_18_sum$log10_avg_price + terrace_18_sum$log10_std, linetype="dashed", color="blue")
+<<<<<<< HEAD
 
 ```
 
+=======
+
+```
+
+>>>>>>> 531cefa0dbb072fb63faaf7c7f8bd268d1a5d06f
 Repeating this data vis for a single outcode for a single year. CV6 (Coventry)- this seems to have a large number of terraced sales in 2018.
 ```{r}
 # For a single postcode outcode (will use the most populous) - CV6 (Coventry)
@@ -305,7 +311,11 @@ check_logsigma <- function(o_code = NULL, p_type = NULL, t_year = NULL){
   subset_outer <- filter(subset_full[[1]], price <= sigma_upper & price >= sigma_lower)
   
   print(
+<<<<<<< HEAD
     paste0("Number of transactions within 1-logsigma (68%) confidence interval: ", as.character(100 * nrow(subset_outer) / nrow(subset_full[[1]])))
+=======
+    paste0("Number of transactions within 1-logsigma confidence interval: ", as.character(100 * nrow(subset_outer) / nrow(subset_full[[1]])))
+>>>>>>> 531cefa0dbb072fb63faaf7c7f8bd268d1a5d06f
   )
   
   sample_plot_ordinary <- ggplot(subset_full[[1]], aes(x=price)) +
@@ -328,7 +338,11 @@ check_logsigma <- function(o_code = NULL, p_type = NULL, t_year = NULL){
 
 }
 
+<<<<<<< HEAD
 check_logsigma("LS6", "T", 2015)
+=======
+check_logsigma("CV6", "T", 2015)
+>>>>>>> 531cefa0dbb072fb63faaf7c7f8bd268d1a5d06f
 
 ```
 
