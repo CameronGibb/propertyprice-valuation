@@ -146,7 +146,7 @@ if(!exists('by_outcde_yr_typ')) {
                                            sd = sd(price),
                                            q25 = quantile(price, .25),
                                            q75 = quantile(price, .75),
-                                           log10_avg_price = log10(mean(price)),
+                                           log10_avg_price = mean(log10(price)),
                                            log10_std = sd(log10(price))),
                                          
                                          keyby = .(outcde, prop_typ, tax_year)][
@@ -154,32 +154,118 @@ if(!exists('by_outcde_yr_typ')) {
                                          ])
 }
 ```
-CG - adding in some data-exp
+
+CG - adding in some data-exp and vis
+
 ```{r}
+# Adding in log price. Using log10, as that is more intuitive to interpret
+full_data <- mutate(full_data, log10_price = log10(price))
+
+# Function to create a subset of dataset based on filter parameters, and return summary values
+SubsetOps <- function(data_fullset, type = NULL, taxyear = NULL, outcode = NULL){
+  
+  # Creating the subset
+  subset <- data_fullset
+  if (!is.null(type)){
+    subset <- filter(subset, prop_typ == type)
+  }
+  if (!is.null(taxyear)){
+    subset <- filter(subset, tax_year == taxyear)
+  }
+  if (!is.null(outcode)){
+     subset <- filter(subset, outcde == outcode)
+  }
+  
+  
+  # Creating a summary table. First need to remove grouping variables that haven't been filtered.
+  summary_subset <- subset 
+  if (!is.null(type)){
+    summary_subset <- group_by(summary_subset, prop_typ, .add=TRUE) 
+  }
+  if (!is.null(taxyear)){
+     summary_subset <- group_by(summary_subset, tax_year, .add=TRUE)
+  }
+  if (!is.null(outcode)){
+    summary_subset <- group_by(summary_subset, outcde, .add=TRUE)
+  }
+  
+  print(group_vars(summary_subset))
+  
+  summary_subset <- summary_subset %>% 
+    summarise(N = n(), 
+              avg_price = mean(price),
+              median = quantile(price, .50),
+              sd = sd(price),
+              q25 = quantile(price, .25),
+              q75 = quantile(price, .75),
+              log10_avg_price = mean(log10_price),
+              log10_std = sd(log10_price)
+    )
+
+  # Combining these to return as a list item
+  output_list <- list(subset, summary_subset)
+  
+  return(output_list)
+}
+
 # Creating a subset of terrace houses in one single tax year (to avoid spread caused by HP inflation).
-# Terrace is the most populous group across the full dataset range. 2015 is the most populous year.
-# Could also assume that terraced houses are less likely to have "unique" features (such as large footprint) when compared with detached that might result in price outliers. 
-# Still, terrace captures some central London residences, with sales prices well in £10 millions which is where the long tail comes from.
-terrace <- full_data %>% 
-  filter(prop_typ == "T" & tax_year %in% c(2017, 2018, 2019)) %>% 
-   mutate(log_price = log(price))
+# Terrace is the most populous group across the full dataset range. 
+# Could also assume that terraced houses are less likely to have "unique" features (such as large footprint) when compared with detached that might result in fewer anomaly values. 
+# Still, terrace captures some central London residences, with sales prices well in £10 millions which is where the v.long tail comes from.
+terrace_18 <- SubsetOps(full_data, type = "T", taxyear = 2018)
+terrace_18_sub <- terrace_18[[1]]
+terrace_18_sum <- terrace_18[[2]]
+  
 
 library(ggplot2)
 # View of distribution- this follows a fairly lognormal shape
-ggplot(terrace, aes(x=price)) + geom_histogram(binwidth=20000) + xlim(0, 1E6)
-# Mapping the price onto a log10 scale - this shows a distribution that appears closer to a Gaussian shape. Still a slight positive tail 
-ggplot(terrace, aes(x=log10(price))) + geom_histogram(binwidth=0.1)
+# Red line indicates arithmetic mean, and blue line indicates mean of the log10 price, where dashed blue indicates the boundary of 1 standard deviation (in log10). These values are transformed from the log10 values back to the n from the  transformed back to the ordinary values.  
+ggplot(terrace_18_sub, aes(x=price)) + 
+  geom_histogram(binwidth=20000) + 
+  xlim(0, 1E6) +
+  geom_vline(xintercept = terrace_18_sum$avg_price, color="red") +
+  geom_vline(xintercept = 10^(terrace_18_sum$log10_avg_price), color="blue") +
+  geom_vline(xintercept = 10^(terrace_18_sum$log10_avg_price - terrace_18_sum$log10_std), linetype="dashed", color="blue") +
+  geom_vline(xintercept = 10^(terrace_18_sum$log10_avg_price + terrace_18_sum$log10_std), linetype="dashed", color="blue")
 
-# For a single postcode outcode (will use the most populous) - CV6 (Coventry)
-# Appears to be a split here somewhere around £170k
-terrace_CV6 <- terrace %>%  filter(outcde == "CV6")
-ggplot(terrace_CV6, aes(x=price)) + geom_histogram(binwidth=10000)
-ggplot(terrace_CV6, aes(x=log10(price))) + geom_histogram(binwidth=0.05)
+# Mapping the price onto a log10 scale - this shows a distribution that appears closer to a Gaussian shape. Still a slight positive tail 
+ggplot(terrace_18_sub, aes(x=log10_price)) + 
+  geom_histogram(binwidth=0.1) +
+  geom_vline(xintercept = log10(terrace_18_sum$avg_price), color="red") +
+  geom_vline(xintercept = terrace_18_sum$log10_avg_price, color="blue") +
+  geom_vline(xintercept = terrace_18_sum$log10_avg_price - terrace_18_sum$log10_std, linetype="dashed", color="blue") +
+  geom_vline(xintercept = terrace_18_sum$log10_avg_price + terrace_18_sum$log10_std, linetype="dashed", color="blue")
+
 ```
+
+Repeating this data vis for a single outcode for a single year. CV6 (Coventry)- this seems to have a large number of terraced sales in 2018.
+```{r}
+# For a single postcode outcode (will use the most populous) - CV6 (Coventry)
+terrace_18_CV6 <- SubsetOps(full_data, type = "T", taxyear = 2018, outcode = "CV6")
+terrace_18_CV6_sub <- terrace_18_CV6[[1]]
+terrace_18_CV6_sum <- terrace_18_CV6[[2]]
+
+# Red line indicates arithmetic mean, and blue line indicates mean of the log10 price, where dashed blue indicates the boundary of 1 standard deviation (in log10). These values are transformed from the log10 values back to the n from the  transformed back to the ordinary values.  
+
+ggplot(terrace_18_CV6_sub, aes(x=price)) + 
+  geom_histogram(binwidth=10000) +
+  geom_vline(xintercept = terrace_18_CV6_sum$avg_price, color="red") +
+  geom_vline(xintercept = 10^(terrace_18_CV6_sum$log10_avg_price), color="blue") +
+  geom_vline(xintercept = 10^(terrace_18_CV6_sum$log10_avg_price - terrace_18_CV6_sum$log10_std), linetype="dashed", color="blue") +
+  geom_vline(xintercept = 10^(terrace_18_CV6_sum$log10_avg_price + terrace_18_CV6_sum$log10_std), linetype="dashed", color="blue")  
+  
+ggplot(terrace_18_CV6_sub, aes(x=log10(price))) + 
+  geom_histogram(binwidth=0.05) +
+  geom_vline(xintercept = log10(terrace_18_CV6_sum$avg_price), color="red") +
+  geom_vline(xintercept = terrace_18_CV6_sum$log10_avg_price, color="blue") +
+  geom_vline(xintercept = terrace_18_CV6_sum$log10_avg_price - terrace_18_CV6_sum$log10_std, linetype="dashed", color="blue") +
+  geom_vline(xintercept = terrace_18_CV6_sum$log10_avg_price + terrace_18_CV6_sum$log10_std, linetype="dashed", color="blue")
+```
+
 CG - applying Gaussian confidence intervals to by_outcde_yr_typ and transforming this back from log scale to be saved
 Will save this as csv to be exported as a lookup table. 
 ```{r}
-# Transforming from log10 price
+# Transforming from log price
 log_sigma <- function(log_mean, Z, log_std, log_base=10)
   {
   return(
@@ -195,23 +281,56 @@ by_outcde_yr_typ_ <- by_outcde_yr_typ %>%
 write_csv(by_outcde_yr_typ_, "data/by_outcode_yr_typ_.csv")
 
 # Checking that the number of values within sigma confidence interval:
-check_logsigma <- function(outcode, p_type, t_year){
-  x <- filter(full_data, outcde == outcode & prop_typ == p_type & tax_year == t_year)
-  sbst <- filter(by_outcde_yr_typ_, outcde == outcode & prop_typ == p_type & tax_year == t_year)
-  sigma_upper <- sbst$avg_logsigma_pos
-  sigma_lower <- sbst$avg_logsigma_neg
-  x_ <- filter(x, price <= sigma_upper & price >= sigma_lower)
+check_logsigma <- function(o_code = NULL, p_type = NULL, t_year = NULL){
+  
+  subset_full <- SubsetOps(full_data, 
+                 type = p_type,
+                 outcode = o_code,
+                 taxyear = t_year)
+  
+  summary_set <- by_outcde_yr_typ_
+  if (!is.null(o_code)){
+    summary_set <- filter(summary_set, outcde == o_code)
+  }
+  if (!is.null(p_type)){
+    summary_set <- filter(summary_set, prop_typ == p_type)
+  }
+  if (!is.null(t_year)){
+    summary_set <- filter(summary_set, tax_year == t_year)
+  }
+  
+  # Finding upper and lower bounds for 1-logsigma intervals, and finding the subset that is outside the 1-logsigma boundaries.
+  sigma_upper <- summary_set$avg_logsigma_pos
+  sigma_lower <- summary_set$avg_logsigma_neg
+  subset_outer <- filter(subset_full[[1]], price <= sigma_upper & price >= sigma_lower)
+  
   print(
-    paste0("Number of transactions within logsigma confidence interval: ", as.character(100 * nrow(x_) / nrow(x)))
-    )
+    paste0("Number of transactions within 1-logsigma (68%) confidence interval: ", as.character(100 * nrow(subset_outer) / nrow(subset_full[[1]])))
+  )
+  
+  sample_plot_ordinary <- ggplot(subset_full[[1]], aes(x=price)) +
+    geom_histogram(binwidth = 20000) +
+    xlim(0, 1E6) +
+    geom_vline(xintercept = summary_set$avg_price, color = "red") +
+    geom_vline(xintercept = 10^(summary_set$log10_avg_price), color = "blue") +
+    geom_vline(xintercept = sigma_upper, linetype = "dashed", color = "blue") +
+    geom_vline(xintercept = sigma_lower, linetype = "dashed", color = "blue")
+  
+  sample_plot_log <- ggplot(subset_full[[1]], aes(x=log10_price)) +
+    geom_histogram(binwidth = 0.05) +
+    geom_vline(xintercept = log10(summary_set$avg_price), color = "red") +
+    geom_vline(xintercept = summary_set$log10_avg_price, color = "blue") +
+    geom_vline(xintercept = log10(sigma_upper), linetype = "dashed", color = "blue") +
+    geom_vline(xintercept = log10(sigma_lower), linetype = "dashed", color = "blue")
+  
+  print(sample_plot_ordinary)
+  print(sample_plot_log)
+
 }
 
-check_logsigma("SW11", "F", 2017)
+check_logsigma("LS6", "T", 2015)
 
-
-ggplot()
 ```
-
 
 Save the summarised table to file to speed up the process when re-running.
 
